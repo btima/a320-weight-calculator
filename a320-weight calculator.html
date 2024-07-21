@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A320 Weight and Balance Calculator</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        input, select, button { width: 100%; padding: 8px; margin-bottom: 10px; }
+        button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        .info { font-size: 0.9em; color: #666; margin-top: -5px; margin-bottom: 10px; }
+        .section { margin-bottom: 20px; }
+        .input-group { display: flex; align-items: center; margin-bottom: 10px; }
+        .input-group input { flex-grow: 1; margin-right: 10px; }
+        .input-group span { width: 50px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>A320 Weight and Balance Calculator</h1>
+        <form id="weightForm">
+            <div class="section">
+                <h2>Aircraft Data</h2>
+                <label for="variant">A320 Variant:</label>
+                <select id="variant" required>
+                    <option value="A320-100">A320-100</option>
+                    <option value="A320-200" selected>A320-200</option>
+                    <option value="A320neo">A320neo</option>
+                </select>
+
+                <label for="oew">Operating Empty Weight (kg):</label>
+                <input type="number" id="oew" required>
+                <p class="info" id="oewInfo"></p>
+
+                <label for="passengers">Number of Passengers:</label>
+                <input type="number" id="passengers" required value="150">
+                <p class="info" id="passengersInfo"></p>
+
+                <label for="cargoWeight">Cargo Weight (kg):</label>
+                <input type="number" id="cargoWeight" required value="2000">
+                <p class="info" id="cargoInfo"></p>
+            </div>
+
+            <div class="section">
+                <h2>Flight Data</h2>
+                <label for="tripDistance">Trip Distance (NM):</label>
+                <input type="number" id="tripDistance" required value="1000">
+                <p class="info">Approximate max range: 3500 NM</p>
+
+                <label for="tripWind">Trip Wind (knots):</label>
+                <input type="number" id="tripWind" required value="0">
+                <p class="info">Positive for tailwind, negative for headwind</p>
+
+                <label for="cruiseAltitude">Cruise Altitude (ft):</label>
+                <input type="number" id="cruiseAltitude" required value="36000">
+
+                <button type="button" id="estimateFuelBtn">Estimate Fuel</button>
+            </div>
+
+            <div class="section">
+                <h2>Fuel Data</h2>
+                <label for="taxiFuel">Taxi Fuel (kg):</label>
+                <input type="number" id="taxiFuel" required value="200">
+
+                <label for="tripFuel">Trip Fuel (kg):</label>
+                <input type="number" id="tripFuel" required>
+
+                <div class="input-group">
+                    <label for="contingencyFuel">Contingency Fuel:</label>
+                    <input type="number" id="contingencyFuel" required>
+                    <span>kg</span>
+                </div>
+                <div class="input-group">
+                    <label for="contingencyPercent">Contingency Percentage:</label>
+                    <input type="number" id="contingencyPercent" required value="5" min="0" max="100">
+                    <span>%</span>
+                </div>
+
+                <label for="alternateFuel">Alternate Fuel (kg):</label>
+                <input type="number" id="alternateFuel" required value="1500">
+
+                <label for="finalReserveFuel">Final Reserve Fuel (kg):</label>
+                <input type="number" id="finalReserveFuel" required value="1200">
+
+                <label for="additionalFuel">Additional Fuel (kg):</label>
+                <input type="number" id="additionalFuel" required value="0">
+
+                <p class="info" id="fuelInfo"></p>
+            </div>
+
+            <button type="submit">Calculate Weights</button>
+        </form>
+        <div id="result"></div>
+    </div>
+
+    <script>
+
+        const minContingencyFuel = 160; // kg
+
+        const a320Variants = {
+            "A320-100": { oew: 42100, cgEmpty: 25, maxPayload: 17600, maxPax: 180, maxTOW: 68000, maxLW: 64500, maxFuel: 23860, maxZFW: 61000 },
+            "A320-200": { oew: 42600, cgEmpty: 25, maxPayload: 18600, maxPax: 180, maxTOW: 77000, maxLW: 66000, maxFuel: 23859, maxZFW: 62500 },
+            "A320neo": { oew: 44300, cgEmpty: 25.5, maxPayload: 18600, maxPax: 180, maxTOW: 79000, maxLW: 67400, maxFuel: 23859, maxZFW: 64300 }
+        };
+
+        const avgPassengerWeight = 88; // kg
+        const passengerCG = 20; // % MAC
+        const cargoCG = 35; // % MAC
+        const fuelCG = 30; // % MAC (approximate)
+
+        function updateVariantInfo() {
+            const variant = a320Variants[document.getElementById('variant').value];
+            document.getElementById('oew').value = variant.oew;
+            document.getElementById('oewInfo').textContent = `Typical range: ${variant.oew - 500} - ${variant.oew + 500} kg`;
+            document.getElementById('passengersInfo').textContent = `Maximum: ${variant.maxPax} passengers`;
+            document.getElementById('fuelInfo').textContent = `Maximum fuel capacity: ${variant.maxFuel} kg`;
+            updateCargoInfo();
+        }
+
+        function updateCargoInfo() {
+            const variant = a320Variants[document.getElementById('variant').value];
+            const passengers = parseInt(document.getElementById('passengers').value) || 0;
+            const passengerWeight = passengers * avgPassengerWeight;
+            const maxCargo = variant.maxPayload - passengerWeight;
+            document.getElementById('cargoInfo').textContent = `Maximum cargo weight: ${Math.floor(maxCargo)} kg`;
+            document.getElementById('cargoWeight').max = maxCargo;
+        }
+
+        function estimateFuel() {
+            const distance = parseFloat(document.getElementById('tripDistance').value);
+            const tripWind = parseFloat(document.getElementById('tripWind').value);
+            const cruiseAltitude = parseFloat(document.getElementById('cruiseAltitude').value);
+            
+            if (isNaN(distance) || isNaN(tripWind) || isNaN(cruiseAltitude)) {
+                alert('Please enter valid numbers for distance, trip wind, and cruise altitude.');
+                return;
+            }
+
+            const averageGroundSpeed = 450;
+            const adjustedGroundSpeed = averageGroundSpeed + tripWind;
+            const flightTime = distance / adjustedGroundSpeed;
+
+            // More realistic fuel burn calculation
+            const baseFuelFlow = 2500; // kg per hour at sea level
+            const altitudeFactor = 1 - (cruiseAltitude / 1000) * 0.02; // 2% reduction per 1000 ft
+            const windFactor = 1 - (tripWind / averageGroundSpeed);
+            const adjustedFuelFlow = baseFuelFlow * altitudeFactor * windFactor;
+            
+            const tripFuel = Math.round(adjustedFuelFlow * flightTime);
+            const contingencyPercent = parseFloat(document.getElementById('contingencyPercent').value) || 5;
+            //const contingencyFuel = Math.round((tripFuel * contingencyPercent) / 100);
+            const contingencyFuel = Math.max(Math.round((tripFuel * contingencyPercent) / 100), minContingencyFuel);
+
+            document.getElementById('tripFuel').value = tripFuel;
+            document.getElementById('contingencyFuel').value = contingencyFuel;
+        }
+
+        function updateContingencyFuel() {
+            const tripFuel = parseInt(document.getElementById('tripFuel').value) || 0;
+            const contingencyPercent = parseFloat(document.getElementById('contingencyPercent').value) || 5;
+            //const contingencyFuel = Math.round((tripFuel * contingencyPercent) / 100);
+            const contingencyFuel = Math.max(Math.round((tripFuel * contingencyPercent) / 100), minContingencyFuel);
+            document.getElementById('contingencyFuel').value = contingencyFuel;
+        }
+
+        document.getElementById('variant').addEventListener('change', updateVariantInfo);
+        document.getElementById('passengers').addEventListener('input', updateCargoInfo);
+        document.getElementById('estimateFuelBtn').addEventListener('click', estimateFuel);
+        document.getElementById('tripFuel').addEventListener('input', updateContingencyFuel);
+        document.getElementById('contingencyPercent').addEventListener('input', updateContingencyFuel);
+
+        document.getElementById('weightForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const variantName = document.getElementById('variant').value;
+            const variant = a320Variants[variantName];
+            const oew = parseFloat(document.getElementById('oew').value);
+            const passengers = parseInt(document.getElementById('passengers').value);
+            const cargoWeight = parseFloat(document.getElementById('cargoWeight').value);
+            
+            const taxiFuel = parseFloat(document.getElementById('taxiFuel').value);
+            const tripFuel = parseFloat(document.getElementById('tripFuel').value);
+            const contingencyFuel = parseFloat(document.getElementById('contingencyFuel').value);
+            const alternateFuel = parseFloat(document.getElementById('alternateFuel').value);
+            const finalReserveFuel = parseFloat(document.getElementById('finalReserveFuel').value);
+            const additionalFuel = parseFloat(document.getElementById('additionalFuel').value);
+            
+            if ([oew, passengers, cargoWeight, taxiFuel, tripFuel, contingencyFuel, alternateFuel, finalReserveFuel, additionalFuel].some(isNaN)) {
+                alert('Please enter valid numbers for all fields.');
+                return;
+            }
+
+            const passengerWeight = passengers * avgPassengerWeight;
+            const zfw = oew + passengerWeight + cargoWeight;
+            const payload = passengerWeight + cargoWeight;
+            
+            const totalFuel = taxiFuel + tripFuel + contingencyFuel + alternateFuel + finalReserveFuel + additionalFuel;
+            const tow = zfw + totalFuel;
+            const lw = tow - tripFuel - taxiFuel;
+
+            // Calculate ZFWCG
+            const zfwcg = (variant.cgEmpty * oew + passengerCG * passengerWeight + cargoCG * cargoWeight) / zfw;
+            
+            // Calculate TOWCG
+            const towcg = (zfwcg * zfw + fuelCG * totalFuel) / tow;
+
+            let resultText = `<h2>Weight Results:</h2>`;
+            resultText += `Zero Fuel Weight (ZFW): ${Math.round(zfw)} kg (Max: ${variant.maxZFW} kg)<br>`;
+            resultText += `Take-Off Weight (TOW): ${Math.round(tow)} kg (Max: ${variant.maxTOW} kg)<br>`;
+            resultText += `Landing Weight (LW): ${Math.round(lw)} kg (Max: ${variant.maxLW} kg)<br>`;
+            resultText += `Total Payload: ${Math.round(payload)} kg (Max: ${variant.maxPayload} kg)<br>`;
+            resultText += `Total Fuel: ${Math.round(totalFuel)} kg (Max: ${variant.maxFuel} kg)<br>`;
+            resultText += `<h2>Center of Gravity Results:</h2>`;
+            resultText += `ZFWCG: ${zfwcg.toFixed(2)}% MAC<br>`;
+            resultText += `TOWCG: ${towcg.toFixed(2)}% MAC`;
+
+            if (zfw > variant.maxZFW) {
+                resultText += `<br><strong>Warning: Zero Fuel Weight exceeds maximum limit of ${variant.maxZFW} kg for ${variantName}.</strong>`;
+            }
+            if (payload > variant.maxPayload) {
+                resultText += `<br><strong>Warning: Payload exceeds maximum limit of ${variant.maxPayload} kg for ${variantName}.</strong>`;
+            }
+            if (totalFuel > variant.maxFuel) {
+                resultText += `<br><strong>Warning: Total fuel exceeds maximum capacity of ${variant.maxFuel} kg for ${variantName}.</strong>`;
+            }
+            if (tow > variant.maxTOW) {
+                resultText += `<br><strong>Warning: Take-Off Weight exceeds maximum limit of ${variant.maxTOW} kg for ${variantName}.</strong>`;
+            }
+            if (lw > variant.maxLW) {
+                resultText += `<br><strong>Warning: Landing Weight exceeds maximum limit of ${variant.maxLW} kg for ${variantName}.</strong>`;
+            }
+
+            document.getElementById('result').innerHTML = resultText;
+        });
+
+        // Initialize variant info on page load
+        updateVariantInfo();
+    </script>
+</body>
+</html>
